@@ -1,3 +1,4 @@
+// ==== IMPORT MODULES ====
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
 const fetch = require("node-fetch");
@@ -7,7 +8,7 @@ require("dotenv").config();
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 const GUILD_ID = process.env.GUILD_ID;
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID;
-const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 180000; // 3 phút
+const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 180000; // default 3 phút
 const USERS_FILE = "./users.json";
 const SENT_FILE = "./sent.json";
 
@@ -37,22 +38,38 @@ const ROLE_MAP = {
 
 // ==== HELPER FUNCTIONS ====
 function loadUsers() {
-  if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
-  return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+  try {
+    if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
+    return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+  } catch (err) {
+    console.error("❌ users.json corrupted, resetting file");
+    fs.writeFileSync(USERS_FILE, "[]");
+    return [];
+  }
 }
 
 function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  } catch (err) {
+    console.error("❌ Failed to save users.json:", err);
+  }
 }
 
 async function updateRoles(member, badges) {
-  for (const roleId of Object.values(ROLE_MAP)) {
-    if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(console.error);
+  try {
+    // remove old roles
+    for (const roleId of Object.values(ROLE_MAP)) {
+      if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(console.error);
+    }
+    // add new roles
+    badges.forEach(badgeId => {
+      const roleId = ROLE_MAP[badgeId];
+      if (roleId) member.roles.add(roleId).catch(console.error);
+    });
+  } catch (err) {
+    console.error("❌ Error updating roles:", err);
   }
-  badges.forEach(badgeId => {
-    const roleId = ROLE_MAP[badgeId];
-    if (roleId) member.roles.add(roleId).catch(console.error);
-  });
 }
 
 // ==== SEND VERIFY EMBED ONCE ====
@@ -60,7 +77,14 @@ client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
   let sentData = { sent: false };
-  if (fs.existsSync(SENT_FILE)) sentData = JSON.parse(fs.readFileSync(SENT_FILE, "utf8"));
+  if (fs.existsSync(SENT_FILE)) {
+    try {
+      sentData = JSON.parse(fs.readFileSync(SENT_FILE, "utf8"));
+    } catch {
+      sentData = { sent: false };
+      fs.writeFileSync(SENT_FILE, JSON.stringify(sentData));
+    }
+  }
 
   if (!sentData.sent) {
     try {
@@ -68,7 +92,7 @@ client.once("ready", async () => {
       const embed = new EmbedBuilder()
         .setTitle("🔑 Roblox Account Verification")
         .setDescription(
-          "Welcome to our Roblox server! 🌟\n\n" +
+          "Welcome to our Sol's RNG Communication server! 🌟\n\n" +
           "Click the button below to verify your Roblox account via Rover.\n" +
           "After verification, your roles will be automatically updated based on badges."
         )
@@ -94,19 +118,33 @@ client.once("ready", async () => {
     }
   }
 
+  // start polling
   setInterval(checkAllUsers, CHECK_INTERVAL);
 });
 
 // ==== CHECK ALL USERS ====
 async function checkAllUsers() {
   const users = loadUsers();
-  const guild = await client.guilds.fetch(GUILD_ID);
+  let guild;
+  try {
+    guild = await client.guilds.fetch(GUILD_ID);
+  } catch (err) {
+    console.error("❌ Failed to fetch guild:", err);
+    return;
+  }
 
   for (const user of users) {
+    let member;
     try {
-      const member = await guild.members.fetch(user.discordId);
+      member = await guild.members.fetch(user.discordId).catch(() => null);
+      if (!member) continue;
+    } catch {
+      continue;
+    }
 
+    try {
       const badgesRes = await fetch(`https://badges.roblox.com/v1/users/${user.robloxId}/badges`);
+      if (!badgesRes.ok) throw new Error(`HTTP ${badgesRes.status}`);
       const badgesData = await badgesRes.json();
       const latestBadges = badgesData.data.map(b => b.id.toString());
 
@@ -121,6 +159,13 @@ async function checkAllUsers() {
     }
   }
 }
+
+// ==== DUMMY EXPRESS (Optional, for Render Web Service) ====
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 3000;
+app.get("/", (req, res) => res.send("Bot is alive!"));
+app.listen(PORT, () => console.log(`🌐 Dummy server running on port ${PORT}`));
 
 // ==== LOGIN BOT ====
 client.login(process.env.TOKEN);
