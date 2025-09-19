@@ -1,138 +1,100 @@
-// ==== IMPORT MODULES ====
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const fs = require("fs");
+const express = require("express");
 const fetch = require("node-fetch");
 require("dotenv").config();
 
-// ==== CONFIG ====
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+});
+
+// ==== Config ====
+const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
+const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID;
-const CHECK_INTERVAL = parseInt(process.env.CHECK_INTERVAL) || 180000;
-const USERS_FILE = "./users.json";
-const SENT_FILE = "./sent.json";
+const ROVER_API_KEY = process.env.ROVER_API_KEY;
+const PORT = process.env.PORT || 3000;
 
-const ROLE_MAP = {
-  "4356557421515611": "1418084140955205662",
-  "3336758570255487": "1418084145648767108",
-  "4072147147623458": "1418084149767442483",
-  "1605629548712504": "1418084165257003028",
-  "2460941940564506": "1418084170168533103",
-  "137829805535621":   "1418096022227517440",
-  "485557368787476":   "1418095916912480446",
-  "1801598389006571":  "1418095889192321064",
-  "2295935762202367":  "1418095884339511411",
-  "2994269484017383":  "1418095878052384818",
-  "1121298629065726":  "1417815932893397113",
-  "3516455555443766":  "1418084122479558812",
-  "1224551724339726":  "1418084136031223930",
-  "2457971054390553":  "1418099134644097204",
-  "3236492292509665":  "1418099051320180767",
-  "3618488813178695":  "1418099355826651219",
-  "2201290015607347":  "1418099458360610837",
-  "1896511924362574":  "1418099064217669733",
-  "4370606648952666":  "1418099264982220940",
-  "1503563480176545":  "1418099416488738967"
-};
+// ==== Express keep-alive ====
+const app = express();
+app.get("/", (req, res) => res.send("Bot is alive!"));
+app.listen(PORT, () => console.log(`🌐 Express server running on port ${PORT}`));
 
-// ==== HELPER FUNCTIONS ====
-function loadUsers() {
-  try {
-    if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
-    return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
-  } catch {
-    fs.writeFileSync(USERS_FILE, "[]");
-    return [];
-  }
-}
+// ==== Load badge-role map ====
+const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json"));
 
-function saveUsers(users) {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  } catch (err) {
-    console.error("❌ Failed to save users.json:", err);
-  }
-}
-
-async function updateRoles(member, badges) {
-  try {
-    for (const roleId of Object.values(ROLE_MAP)) {
-      if (member.roles.cache.has(roleId)) await member.roles.remove(roleId).catch(console.error);
-    }
-    badges.forEach(badgeId => {
-      const roleId = ROLE_MAP[badgeId];
-      if (roleId) member.roles.add(roleId).catch(console.error);
-    });
-  } catch (err) {
-    console.error("❌ Error updating roles:", err);
-  }
-}
-
-// ==== SEND VERIFY EMBED ONCE ====
+// ==== Verification embed ====
 client.once("ready", async () => {
-  console.log(`🤖 Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
 
-  let sentData = { sent: false };
-  if (fs.existsSync(SENT_FILE)) {
-    try { sentData = JSON.parse(fs.readFileSync(SENT_FILE, "utf8")); } catch { sentData = { sent: false }; }
-  }
+  const sentData = fs.existsSync("sent.json") ? JSON.parse(fs.readFileSync("sent.json")) : { sent: false };
 
   if (!sentData.sent) {
     try {
       const channel = await client.channels.fetch(VERIFY_CHANNEL_ID);
       const embed = new EmbedBuilder()
-        .setTitle("🔑 Roblox Account Verification")
-        .setDescription("Click the button below to verify your Roblox account via Rover.\nRoles will update automatically after verification.")
-        .setColor("#5865F2")
-        .setThumbnail("https://www.roblox.com/favicon.ico")
-        .setFooter({ text: "⚠️ Verify only once" })
-        .setTimestamp();
+        .setTitle("🔑 Roblox Verification")
+        .setDescription(
+          "Click below to verify your Roblox account via Rover.\n\n" +
+          "✅ Once verified, roles will be automatically updated based on your badges."
+        )
+        .setColor("#2f3136");
 
       const button = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setLabel("Verify with Rover ✅").setStyle(ButtonStyle.Link).setURL("https://verify.eryn.io/")
+        new ButtonBuilder()
+          .setLabel("Verify with Rover")
+          .setStyle(ButtonStyle.Link)
+          .setURL("https://verify.eryn.io/")
       );
 
       await channel.send({ embeds: [embed], components: [button] });
       console.log("✅ Verification embed sent!");
-      sentData.sent = true;
-      fs.writeFileSync(SENT_FILE, JSON.stringify(sentData, null, 2));
-    } catch (err) { console.error("❌ Error sending verify embed:", err); }
+      fs.writeFileSync("sent.json", JSON.stringify({ sent: true }, null, 2));
+    } catch (err) {
+      console.error("❌ Error sending verify embed:", err);
+    }
   }
 
-  setInterval(checkAllUsers, CHECK_INTERVAL);
+  // Start auto-check loop every 3 minutes
+  setInterval(checkAllVerifiedUsers, 3 * 60 * 1000);
 });
 
-// ==== CHECK USERS ====
-async function checkAllUsers() {
-  const users = loadUsers();
-  let guild;
-  try { guild = await client.guilds.fetch(GUILD_ID); } catch { return; }
-
-  for (const user of users) {
-    let member;
-    try { member = await guild.members.fetch(user.discordId).catch(() => null); if(!member) continue; } catch { continue; }
-
-    try {
-      const badgesRes = await fetch(`https://badges.roblox.com/v1/users/${user.robloxId}/badges`);
-      if (!badgesRes.ok) throw new Error(`HTTP ${badgesRes.status}`);
-      const badgesData = await badgesRes.json();
-      const latestBadges = badgesData.data.map(b => b.id.toString());
-      if (JSON.stringify(latestBadges) !== JSON.stringify(user.badges)) {
-        await updateRoles(member, latestBadges);
-        user.badges = latestBadges;
-        saveUsers(users);
-        console.log(`✅ Updated roles for ${member.user.tag}`);
-      }
-    } catch (err) { console.error(`❌ Error checking user ${user.discordId}:`, err); }
+// ==== Auto-check Rover API ====
+async function getRoverData(userId) {
+  try {
+    const res = await fetch(`https://verify.eryn.io/api/user/${userId}`, {
+      headers: { "Authorization": `Bearer ${ROVER_API_KEY}` }
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.error("❌ Rover API error:", err);
+    return null;
   }
 }
 
-// ==== DUMMY PORT (Render Web Service free fix) ====
-const express = require("express");
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get("/", (req, res) => res.send("🤖 Bot is alive!"));
-app.listen(PORT, () => console.log(`🌐 Dummy server running on port ${PORT}`));
+async function checkAllVerifiedUsers() {
+  const guild = await client.guilds.fetch(GUILD_ID);
+  const members = await guild.members.fetch();
 
-// ==== LOGIN BOT ====
-client.login(process.env.TOKEN);
+  for (const [id, member] of members) {
+    // Giả sử bạn lưu userId Roblox đã verify trong member.nickname hoặc database
+    const robloxId = member.nickname; // <-- thay bằng cách lưu của bạn
+    if (!robloxId) continue;
+
+    const roverData = await getRoverData(robloxId);
+    if (!roverData || !roverData.badges) continue;
+
+    for (const badge of roverData.badges) {
+      const roleId = badgeRoles[badge.id];
+      if (roleId && !member.roles.cache.has(roleId)) {
+        await member.roles.add(roleId).catch(console.error);
+        console.log(`✅ Added role ${roleId} to ${member.user.tag} for badge ${badge.id}`);
+      }
+    }
+  }
+}
+
+// ==== Login ====
+client.login(TOKEN);
