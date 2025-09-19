@@ -4,10 +4,6 @@ const express = require("express");
 const fetch = require("node-fetch");
 require("dotenv").config();
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
-});
-
 // ==== Config ====
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
@@ -15,6 +11,11 @@ const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID;
 const ROVER_API_KEY = process.env.ROVER_API_KEY;
 const PORT = process.env.PORT || 3000;
+
+// ==== Discord client ====
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+});
 
 // ==== Express keep-alive ====
 const app = express();
@@ -28,8 +29,8 @@ const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json"));
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
+  // gửi embed verify 1 lần
   const sentData = fs.existsSync("sent.json") ? JSON.parse(fs.readFileSync("sent.json")) : { sent: false };
-
   if (!sentData.sent) {
     try {
       const channel = await client.channels.fetch(VERIFY_CHANNEL_ID);
@@ -60,7 +61,7 @@ client.once("ready", async () => {
   setInterval(checkAllVerifiedUsers, 3 * 60 * 1000);
 });
 
-// ==== Auto-check Rover API ====
+// ==== Rover API check ====
 async function getRoverData(userId) {
   try {
     const res = await fetch(`https://verify.eryn.io/api/user/${userId}`, {
@@ -74,13 +75,14 @@ async function getRoverData(userId) {
   }
 }
 
+// ==== Auto-update roles ====
 async function checkAllVerifiedUsers() {
   const guild = await client.guilds.fetch(GUILD_ID);
   const members = await guild.members.fetch();
 
   for (const [id, member] of members) {
-    // Giả sử bạn lưu userId Roblox đã verify trong member.nickname hoặc database
-    const robloxId = member.nickname; // <-- thay bằng cách lưu của bạn
+    // Giả sử lưu Roblox userId trong nickname hoặc database
+    const robloxId = member.nickname;
     if (!robloxId) continue;
 
     const roverData = await getRoverData(robloxId);
@@ -95,12 +97,6 @@ async function checkAllVerifiedUsers() {
     }
   }
 }
-const express = require("express");
-const app = express();
-const PORT = process.env.PORT || 3000;
 
-app.get("/", (req, res) => res.send("Bot is alive!"));
-app.listen(PORT, () => console.log(`🌐 Keep-alive server running on port ${PORT}`));
-
-// ==== Login ====
+// ==== Login bot ====
 client.login(TOKEN);
