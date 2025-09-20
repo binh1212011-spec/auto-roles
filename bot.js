@@ -1,7 +1,7 @@
 // bot2.js
 const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
-const fetch = require("node-fetch");
+const fetch = (...args) => import("node-fetch").then(({default: fetch}) => fetch(...args));
 require("dotenv").config();
 
 // ==== Config ====
@@ -29,12 +29,10 @@ async function getRobloxId(discordId) {
 // ==== Roblox API: check badge ownership ====
 async function hasBadge(userId, badgeId) {
   try {
-    const res = await fetch(`https://apis.roblox.com/badges/v1/users/${userId}/badges/awarded/${badgeId}`);
-    if (res.status === 200) {
-      const data = await res.json();
-      return data.awarded === true;
-    }
-    return false;
+    const res = await fetch(`https://badges.roblox.com/v1/users/${userId}/badges/awarded-dates?badgeIds=${badgeId}`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.data && data.data.length > 0;
   } catch (err) {
     console.error("❌ Roblox API error:", err);
     return false;
