@@ -10,7 +10,8 @@ const GUILD_ID = process.env.GUILD_ID;
 const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID;
 const ROVER_API_KEY = process.env.ROVER_API_KEY;
 const PORT = process.env.PORT || 3000;
-const CHECK_INTERVAL = 1000; // 3 phút, đổi thành 1000 để 1s
+const CHECK_INTERVAL = 10 * 1000; // 10 seconds
+const USER_CHECK_COOLDOWN = 30 * 1000; // 30 seconds
 
 // ==== Express keep-alive ====
 const app = express();
@@ -31,13 +32,16 @@ client.once("ready", async () => {
 
   const embedData = fs.existsSync("embedMessage.json") ? JSON.parse(fs.readFileSync("embedMessage.json")) : {};
 
-  // Nếu chưa gửi embed
   if (!embedData.id) {
     const embed = new EmbedBuilder()
-      .setTitle("🔑 Roblox Verification")
+      .setTitle("Sol's RNG Verification ✅")
       .setDescription(
-        "Click below to verify your Roblox account via Rover.\n\n" +
-        "✅ Once verified, roles will be automatically updated based on your badges."
+        "Welcome to the Sol's RNG community! 🎉\n\n" +
+        "To unlock your exclusive roles based on your Roblox achievements, you need to verify your Roblox account. " +
+        "Simply click the button below, follow the steps via Rover, and let the magic happen!\n\n" +
+        "💡 Once verified, your badges will automatically grant you special roles. " +
+        "This is your gateway to show off your accomplishments and gain access to unique community perks.\n\n" +
+        "Don't wait—verify now and let the adventure begin! 🚀"
       )
       .setColor("#2f3136");
 
@@ -55,7 +59,7 @@ client.once("ready", async () => {
     console.log("⚠️ Verification embed already sent, skipping.");
   }
 
-  // Start auto-check loop
+  // Start auto-check loop every 10 seconds
   setInterval(checkAllVerifiedUsers, CHECK_INTERVAL);
 });
 
@@ -74,24 +78,35 @@ async function getRoverData(userId) {
 }
 
 // ==== Auto-check all verified users ====
+const lastCheck = new Map();
+
 async function checkAllVerifiedUsers() {
   const guild = await client.guilds.fetch(GUILD_ID);
   const members = await guild.members.fetch();
+  const membersArray = Array.from(members.values());
 
-  for (const [id, member] of members) {
-    // Giả sử bạn lưu userId Roblox đã verify trong member.nickname hoặc database
-    const robloxId = member.nickname; // <-- thay bằng cách lưu của bạn
-    if (!robloxId) continue;
+  for (let i = 0; i < membersArray.length; i += 10) { // batch 10 users
+    const batch = membersArray.slice(i, i + 10);
+    for (const member of batch) {
+      const now = Date.now();
+      if (lastCheck.get(member.id) && now - lastCheck.get(member.id) < USER_CHECK_COOLDOWN) continue;
+      lastCheck.set(member.id, now);
 
-    const roverData = await getRoverData(robloxId);
-    if (!roverData || !roverData.badges) continue;
+      const robloxId = member.nickname; // <-- thay bằng cách lưu Roblox ID
+      if (!robloxId) continue;
 
-    for (const badge of roverData.badges) {
-      const roleId = badgeRoles[badge.id];
-      if (roleId && !member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId).catch(console.error);
-        console.log(`✅ Added role ${roleId} to ${member.user.tag} for badge ${badge.id}`);
+      const roverData = await getRoverData(robloxId);
+      if (!roverData || !roverData.badges) continue;
+
+      for (const badge of roverData.badges) {
+        const roleId = badgeRoles[badge.id];
+        if (roleId && !member.roles.cache.has(roleId)) {
+          await member.roles.add(roleId).catch(console.error);
+          console.log(`✅ Added role ${roleId} to ${member.user.tag} for badge ${badge.id}`);
+        }
       }
+
+      await new Promise(r => setTimeout(r, 200)); // small delay to avoid spamming API
     }
   }
 }
