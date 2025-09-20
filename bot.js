@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const express = require("express");
 const fs = require("fs");
-const fetch = require("node-fetch"); // cần node-fetch
+const fetch = require("node-fetch");
 require("dotenv").config();
 
 const TOKEN = process.env.TOKEN;
