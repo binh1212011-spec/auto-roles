@@ -1,61 +1,40 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-require('dotenv').config();
+// bot.js
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+require("dotenv").config();
 
-// Load badgeRoles.json
-let badgeRoles;
-try {
-  badgeRoles = JSON.parse(fs.readFileSync('./badgeRoles.json'));
-} catch (err) {
-  console.error('❌ Không đọc được badgeRoles.json:', err);
-  process.exit(1);
-}
+// === CẤU HÌNH ===
+// ID kênh để gửi embed (bạn có thể đổi theo server nào muốn test)
+const CHANNEL_ID = "1411987904980586576";
 
+// Tạo client
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-// ==== EXPRESS KEEP-ALIVE ====
-const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('Bot is alive!'));
-app.listen(PORT, () => console.log(`🚀 Express server running on port ${PORT}`));
-
-// ==== READY EVENT ====
-client.once('ready', () => {
+// Khi bot sẵn sàng
+client.once("ready", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-});
 
-// ==== GUILD MEMBER ADD EVENT ====
-client.on('guildMemberAdd', async member => {
-  // Test embed khi có người join
-  const embed = new EmbedBuilder()
-    .setTitle('Chào mừng!')
-    .setDescription(`Chào <@${member.id}>! Kiểm tra role Roblox của bạn...`)
-    .setColor('#00FF00')
-    .setTimestamp();
+  try {
+    // Lấy kênh bằng ID
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (!channel) return console.log("Không tìm thấy kênh để gửi embed");
 
-  const channel = member.guild.systemChannel || member.guild.channels.cache.find(ch => ch.isTextBased());
-  if (channel) channel.send({ embeds: [embed] });
+    // Tạo embed
+    const embed = new EmbedBuilder()
+      .setColor("#303030")
+      .setTitle("Roles played time")
+      .setDescription(
+        "Tôi mới update vài roles 'chơi chơi' để flex nhưng cái Achievement của bản thân mình :D"
+      );
 
-  // Gán role dựa trên Roblox ID
-  // **Bạn cần có cách lấy Roblox ID từ user** 
-  // Ví dụ giả lập:
-  const robloxID = '4356557421515611'; // Thay bằng logic thực tế
-  const roleID = badgeRoles[robloxID];
-
-  if (roleID) {
-    try {
-      const role = member.guild.roles.cache.get(roleID);
-      if (role) await member.roles.add(role);
-      console.log(`✅ Gán role ${role.name} cho ${member.user.tag}`);
-    } catch (err) {
-      console.error('❌ Lỗi khi gán role:', err);
-    }
+    // Gửi embed 1 lần
+    await channel.send({ embeds: [embed] });
+    console.log("✅ Embed đã gửi thành công!");
+  } catch (err) {
+    console.error("❌ Lỗi gửi embed:", err);
   }
 });
 
-// ==== LOGIN ====
-client.login(process.env.TOKEN)
-  .catch(err => console.error('❌ Login failed:', err));
+// Login bot với token từ .env
+client.login(process.env.TOKEN);
