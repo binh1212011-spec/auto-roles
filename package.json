@@ -4,7 +4,7 @@
   "description": "Discord bot + verify page that auto-assigns roles based on Roblox badges",
   "main": "bot.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
