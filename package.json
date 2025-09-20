@@ -1,7 +1,6 @@
 {
   "name": "roblox-auto-roles-bot",
   "version": "1.0.0",
-  "description": "Discord bot + verify page that auto-assigns roles based on Roblox badges",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
@@ -9,8 +8,8 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "express": "^4.18.2",
-    "dotenv": "^16.3.1",
-    "node-fetch": "^3.3.2"
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
