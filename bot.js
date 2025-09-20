@@ -1,14 +1,23 @@
 // bot.js
 const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
-const fetch = require("node-fetch");
+const fetch = require("node-fetch"); // Dùng node-fetch để tránh lỗi
+const express = require("express");
 require("dotenv").config();
 
 // ==== Config ====
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID;
+const PORT = process.env.PORT || 3000;
 const CHECK_INTERVAL = 10 * 1000; // 10 giây
-const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json")); // badgeId -> roleId
+
+// Badge mapping (badgeId -> roleId)
+const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json"));
+
+// ==== Express keep-alive ====
+const app = express();
+app.get("/", (req, res) => res.send("Bot is alive!"));
+app.listen(PORT, () => console.log(`🌐 Express server running on port ${PORT}`));
 
 // ==== Discord client ====
 const client = new Client({
@@ -75,15 +84,5 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   setInterval(checkAllMembers, CHECK_INTERVAL);
 });
-
-// ==== Keep-alive Express server (for Render) ====
-const express = require("express");
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get("/", (req, res) => res.send("Bot is running!"));
-app.listen(PORT, () =>
-  console.log(`🌐 Keep-alive server running on port ${PORT}`)
-);
 
 client.login(TOKEN);
