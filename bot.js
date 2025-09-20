@@ -1,38 +1,42 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
+require("dotenv").config();
 
-const TOKEN = process.env.TOKEN;
-const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json", "utf8"));
+// ==== CLIENT ====
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+});
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+// ==== LOAD ROLE MAPPING ====
+const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json"));
 
-client.once("clientReady", () => {
+// ==== BOT READY ====
+client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
+// ==== VERIFY BUTTON HANDLER ====
 client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isButton()) return;
 
-  if (interaction.commandName === "verify") {
-    const robloxId = interaction.options.getString("roblox_id"); // Nhập trực tiếp Roblox ID
+  const robloxId = interaction.customId; // Giả sử button customId = Roblox ID
+  const roleId = badgeRoles[robloxId];
 
-    const member = interaction.member;
-    const roles = badgeRoles[robloxId];
+  if (!roleId) {
+    return interaction.reply({ content: "Không tìm thấy role cho Roblox ID này.", ephemeral: true });
+  }
 
-    if (!roles || roles.length === 0) {
-      return interaction.reply({ content: "❌ Không tìm thấy role cho Roblox ID này.", ephemeral: true });
-    }
+  const role = interaction.guild.roles.cache.get(roleId);
+  if (!role) return interaction.reply({ content: "Role không tồn tại trên server.", ephemeral: true });
 
-    let rolesAdded = 0;
-    for (const roleId of roles) {
-      if (!member.roles.cache.has(roleId)) {
-        await member.roles.add(roleId).catch(console.error);
-        rolesAdded++;
-      }
-    }
-
-    await interaction.reply({ content: `✅ Verified! Roles added: ${rolesAdded}`, ephemeral: true });
+  try {
+    await interaction.member.roles.add(role);
+    await interaction.reply({ content: `✅ Role đã được gán!`, ephemeral: true });
+  } catch (err) {
+    console.error(err);
+    await interaction.reply({ content: "Có lỗi xảy ra khi gán role.", ephemeral: true });
   }
 });
 
-client.login(TOKEN);
+// ==== LOGIN ====
+client.login(process.env.TOKEN);
