@@ -1,9 +1,12 @@
 // bot.js
 const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
-const fetch = require("node-fetch"); // Dùng node-fetch để tránh lỗi
 const express = require("express");
 require("dotenv").config();
+
+// FIX fetch cho Node.js CommonJS
+const fetch = (...args) =>
+  import("node-fetch").then(({ default: fetch }) => fetch(...args));
 
 // ==== Config ====
 const TOKEN = process.env.TOKEN;
