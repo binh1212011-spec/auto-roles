@@ -4,33 +4,28 @@ const express = require("express");
 const fetch = require("node-fetch");
 require("dotenv").config();
 
-// ==== Config ====
-const TOKEN = process.env.TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
-const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID;
-const VERIFY_CHANNEL_ID = process.env.VERIFY_CHANNEL_ID;
-const ROVER_API_KEY = process.env.ROVER_API_KEY;
-const PORT = process.env.PORT || 3000;
+// ==== Client Discord ====
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
 
-// ==== Discord client ====
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-});
+// ==== Config ====
+const { TOKEN, GUILD_ID, VERIFY_CHANNEL_ID, LOG_CHANNEL_ID, ROVER_API_KEY, PORT } = process.env;
+const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json"));
+const verifiedFile = "verified.json";
+
+// ==== Load verified users ====
+let verifiedUsers = fs.existsSync(verifiedFile) ? JSON.parse(fs.readFileSync(verifiedFile)) : {};
 
 // ==== Express keep-alive ====
 const app = express();
 app.get("/", (req, res) => res.send("Bot is alive!"));
 app.listen(PORT, () => console.log(`🌐 Express server running on port ${PORT}`));
 
-// ==== Load badge-role map ====
-const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json"));
-
 // ==== Verification embed ====
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
 
-  // gửi embed verify 1 lần
   const sentData = fs.existsSync("sent.json") ? JSON.parse(fs.readFileSync("sent.json")) : { sent: false };
+
   if (!sentData.sent) {
     try {
       const channel = await client.channels.fetch(VERIFY_CHANNEL_ID);
@@ -57,14 +52,14 @@ client.once("ready", async () => {
     }
   }
 
-  // Start auto-check loop every 3 minutes
-  setInterval(checkAllVerifiedUsers, 3 * 60 * 1000);
+  // Bắt đầu loop auto-check badges
+  setInterval(checkAllVerifiedUsers, 3 * 60 * 1000); // 3 phút
 });
 
-// ==== Rover API check ====
-async function getRoverData(userId) {
+// ==== Rover API ====
+async function getRoverData(robloxId) {
   try {
-    const res = await fetch(`https://verify.eryn.io/api/user/${userId}`, {
+    const res = await fetch(`https://verify.eryn.io/api/user/${robloxId}`, {
       headers: { "Authorization": `Bearer ${ROVER_API_KEY}` }
     });
     if (!res.ok) return null;
@@ -75,15 +70,14 @@ async function getRoverData(userId) {
   }
 }
 
-// ==== Auto-update roles ====
+// ==== Auto-check và cấp roles ====
 async function checkAllVerifiedUsers() {
   const guild = await client.guilds.fetch(GUILD_ID);
   const members = await guild.members.fetch();
 
-  for (const [id, member] of members) {
-    // Giả sử lưu Roblox userId trong nickname hoặc database
-    const robloxId = member.nickname;
-    if (!robloxId) continue;
+  for (const [discordId, robloxId] of Object.entries(verifiedUsers)) {
+    const member = members.get(discordId);
+    if (!member) continue;
 
     const roverData = await getRoverData(robloxId);
     if (!roverData || !roverData.badges) continue;
@@ -98,5 +92,17 @@ async function checkAllVerifiedUsers() {
   }
 }
 
-// ==== Login bot ====
+// ==== Command lưu Roblox ID sau verify ====
+client.on("interactionCreate", async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === "verify") {
+    const robloxId = interaction.options.getString("roblox_id");
+    verifiedUsers[interaction.user.id] = robloxId;
+    fs.writeFileSync(verifiedFile, JSON.stringify(verifiedUsers, null, 2));
+    await interaction.reply({ content: `✅ Your Roblox ID ${robloxId} has been saved! Roles will update automatically.`, ephemeral: true });
+  }
+});
+
+// ==== Login ====
 client.login(TOKEN);
