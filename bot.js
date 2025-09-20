@@ -1,7 +1,7 @@
-// bot2.js
+// bot.js
 const { Client, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
-const fetch = (...args) => import("node-fetch").then(({default: fetch}) => fetch(...args));
+const fetch = require("node-fetch");
 require("dotenv").config();
 
 // ==== Config ====
@@ -11,7 +11,9 @@ const CHECK_INTERVAL = 10 * 1000; // 10 giây
 const badgeRoles = JSON.parse(fs.readFileSync("badgeRoles.json")); // badgeId -> roleId
 
 // ==== Discord client ====
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+});
 
 // ==== Rover API: Discord ID -> Roblox ID ====
 async function getRobloxId(discordId) {
@@ -29,10 +31,14 @@ async function getRobloxId(discordId) {
 // ==== Roblox API: check badge ownership ====
 async function hasBadge(userId, badgeId) {
   try {
-    const res = await fetch(`https://badges.roblox.com/v1/users/${userId}/badges/awarded-dates?badgeIds=${badgeId}`);
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.data && data.data.length > 0;
+    const res = await fetch(
+      `https://apis.roblox.com/badges/v1/users/${userId}/badges/awarded/${badgeId}`
+    );
+    if (res.status === 200) {
+      const data = await res.json();
+      return data.awarded === true;
+    }
+    return false;
   } catch (err) {
     console.error("❌ Roblox API error:", err);
     return false;
@@ -56,7 +62,9 @@ async function checkAllMembers() {
       if (await hasBadge(robloxId, badgeId)) {
         if (!member.roles.cache.has(roleId)) {
           await member.roles.add(roleId).catch(console.error);
-          console.log(`✅ Added role ${roleId} to ${member.user.tag} for badge ${badgeId}`);
+          console.log(
+            `✅ Added role ${roleId} to ${member.user.tag} for badge ${badgeId}`
+          );
         }
       }
     }
@@ -67,5 +75,15 @@ client.once("ready", () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   setInterval(checkAllMembers, CHECK_INTERVAL);
 });
+
+// ==== Keep-alive Express server (for Render) ====
+const express = require("express");
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => res.send("Bot is running!"));
+app.listen(PORT, () =>
+  console.log(`🌐 Keep-alive server running on port ${PORT}`)
+);
 
 client.login(TOKEN);
