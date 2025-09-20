@@ -1,42 +1,39 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const fs = require("fs");
-require("dotenv").config();
+// ==== IMPORT MODULES ====
+const fs = require('fs');
+const { Client, GatewayIntentBits } = require('discord.js');
+const express = require('express');
+require('dotenv').config();
 
-// ==== CLIENT ====
+// ==== EXPRESS SERVER (Render cần) ====
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => res.send('Bot is alive!'));
+app.listen(PORT, () => console.log(`🚀 Express server running on port ${PORT}`));
+
+// ==== DISCORD BOT ====
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
-// ==== LOAD ROLE MAPPING ====
-const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json"));
+// ==== BADGE ROLES SAFE LOAD ====
+let badgeRoles = {};
+try {
+  badgeRoles = JSON.parse(fs.readFileSync('./badgeRoles.json', 'utf-8'));
+  console.log('✅ badgeRoles.json loaded');
+} catch (err) {
+  console.warn('⚠️ badgeRoles.json not found, bot vẫn chạy.');
+}
 
-// ==== BOT READY ====
-client.once("ready", () => {
+// ==== BOT EVENTS ====
+client.once('ready', () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 });
 
-// ==== VERIFY BUTTON HANDLER ====
-client.on("interactionCreate", async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  const robloxId = interaction.customId; // Giả sử button customId = Roblox ID
-  const roleId = badgeRoles[robloxId];
-
-  if (!roleId) {
-    return interaction.reply({ content: "Không tìm thấy role cho Roblox ID này.", ephemeral: true });
-  }
-
-  const role = interaction.guild.roles.cache.get(roleId);
-  if (!role) return interaction.reply({ content: "Role không tồn tại trên server.", ephemeral: true });
-
-  try {
-    await interaction.member.roles.add(role);
-    await interaction.reply({ content: `✅ Role đã được gán!`, ephemeral: true });
-  } catch (err) {
-    console.error(err);
-    await interaction.reply({ content: "Có lỗi xảy ra khi gán role.", ephemeral: true });
-  }
-});
-
-// ==== LOGIN ====
-client.login(process.env.TOKEN);
+// ==== BOT LOGIN ====
+client.login(process.env.TOKEN)
+  .catch(err => console.error('❌ Login failed:', err));
