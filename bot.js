@@ -1,9 +1,12 @@
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
-require('dotenv').config();
-const fetch = require('node-fetch');
-const express = require('express');
-const badgeRoles = require('./badgeRoles.json');
+import { Client, GatewayIntentBits, Partials, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
+import fetch from "node-fetch";
+import express from "express";
+import dotenv from "dotenv";
+import badgeRoles from "./badgeRoles.json" assert { type: "json" };
 
+dotenv.config();
+
+// ====== Bot setup ======
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -14,24 +17,24 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-// ===== Keep-alive server =====
+client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
+
+// ====== Keep-alive server ======
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT, () => console.log(`Keep-alive running on port ${PORT}`));
 
-// ===== Bot ready =====
-client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
-
-// ===== Auto assign Unverified =====
+// ====== Auto assign Unverified ======
 client.on('guildMemberAdd', async (member) => {
     const role = member.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
     if (!role) return;
     setTimeout(() => member.roles.add(role).catch(console.error), 1);
 });
 
-// ===== Slash command /verify =====
+// ====== Slash command /verify ======
 client.on('interactionCreate', async interaction => {
+
     if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'verify') {
             const modal = new ModalBuilder()
@@ -47,11 +50,12 @@ client.on('interactionCreate', async interaction => {
 
             const row = new ActionRowBuilder().addComponents(robloxInput);
             modal.addComponents(row);
+
             await interaction.showModal(modal);
         }
     }
 
-    // ===== Modal submit =====
+    // ====== Modal submit ======
     if (interaction.isModalSubmit()) {
         if (interaction.customId === 'verifyModal') {
             const robloxId = interaction.fields.getTextInputValue('robloxId');
@@ -84,4 +88,5 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// ====== Login bot ======
 client.login(process.env.TOKEN);
