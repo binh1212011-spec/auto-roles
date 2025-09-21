@@ -10,7 +10,7 @@ const levelRoles = JSON.parse(fs.readFileSync("./levelRoles.json", "utf8"));
 const channelLevels = JSON.parse(fs.readFileSync("./channelLevels.json", "utf8"));
 const categoryLevels = JSON.parse(fs.readFileSync("./categoryLevels.json", "utf8"));
 
-// ===== Client =====
+// ===== Create client =====
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -39,9 +39,10 @@ function getUserLevel(member) {
 client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
 
+    // Xác định level cần cho kênh
     let requiredLevel = channelLevels[message.channel.id];
 
-    // Nếu channel không set level → check category
+    // Nếu kênh không có level riêng → check category
     if (!requiredLevel && message.channel.parentId) {
         requiredLevel = categoryLevels[message.channel.parentId];
     }
@@ -55,8 +56,9 @@ client.on(Events.MessageCreate, async (message) => {
         // Xóa message và gửi cảnh báo ephemeral
         await message.delete().catch(() => {});
         const reply = await message.channel.send({
-            content: `<@${member.id}>, bạn cần **level ${requiredLevel}** để truy cập kênh này. Hiện tại level của bạn: ${userLevel}`,
+            content: `<@${member.id}>, bạn cần **level ${requiredLevel}** để gửi tin nhắn ở kênh này. Hiện tại level của bạn: ${userLevel}`,
         });
+        // Xóa cảnh báo sau 5 giây
         setTimeout(() => reply.delete().catch(() => {}), 5000);
     }
 });
