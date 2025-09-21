@@ -10,6 +10,9 @@ dotenv.config();
 // ===== Load badgeRoles =====
 const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json", "utf8"));
 
+// ===== Game ID của bạn =====
+const GAME_ID = process.env.GAME_ID; // Ví dụ: "15532962292"
+
 // ===== Bot setup =====
 const client = new Client({
     intents: [
@@ -36,10 +39,10 @@ client.on('guildMemberAdd', async (member) => {
     setTimeout(() => member.roles.add(role).catch(console.error), 1);
 });
 
-// ===== Function check badges =====
-async function checkUserBadges(member, robloxId) {
+// ===== Function check badges cho game của bạn =====
+async function checkGameBadges(member, robloxId) {
     try {
-        const res = await fetch(`https://badges.roblox.com/v1/users/${robloxId}/badges?limit=100`);
+        const res = await fetch(`https://games.roblox.com/v1/users/${robloxId}/badges?gameId=${GAME_ID}`);
         const data = await res.json();
 
         if (!data || !data.data) return;
@@ -52,13 +55,9 @@ async function checkUserBadges(member, robloxId) {
             if (!role) continue;
 
             if (userBadgeIds.includes(Number(badgeId))) {
-                if (!member.roles.cache.has(role.id)) {
-                    member.roles.add(role).catch(console.error);
-                }
+                if (!member.roles.cache.has(role.id)) member.roles.add(role).catch(console.error);
             } else {
-                if (member.roles.cache.has(role.id)) {
-                    member.roles.remove(role).catch(console.error);
-                }
+                if (member.roles.cache.has(role.id)) member.roles.remove(role).catch(console.error);
             }
         }
     } catch (err) {
@@ -88,27 +87,6 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isModalSubmit() && interaction.customId === 'verifyModal') {
         const robloxId = interaction.fields.getTextInputValue('robloxId');
-        let hasBadge = false;
-        let badgeRolesFound = [];
-
-        // ===== Initial badge check =====
-        try {
-            const res = await fetch(`https://badges.roblox.com/v1/users/${robloxId}/badges?limit=100`);
-            const data = await res.json();
-
-            if (data && data.data) {
-                const userBadgeIds = data.data.map(b => b.id);
-
-                for (let badgeId of Object.keys(badgeRoles)) {
-                    if (userBadgeIds.includes(Number(badgeId))) {
-                        hasBadge = true;
-                        badgeRolesFound.push(badgeRoles[badgeId]);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error(`Error checking badges for user ${robloxId}:`, err);
-        }
 
         // ===== Remove Unverified =====
         const unverifiedRole = interaction.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
@@ -118,27 +96,19 @@ client.on('interactionCreate', async interaction => {
         const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
         if (verifiedRole) interaction.member.roles.add(verifiedRole).catch(console.error);
 
-        // ===== Add initial badge roles =====
-        for (let roleId of badgeRolesFound) {
-            const role = interaction.guild.roles.cache.get(roleId);
-            if (role) interaction.member.roles.add(role).catch(console.error);
-        }
-
         // ===== Update nickname =====
         try {
             const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
             const usernameData = await usernameRes.json();
-            if (usernameData && usernameData.name) {
-                interaction.member.setNickname(usernameData.name).catch(console.error);
-            }
+            if (usernameData && usernameData.name) interaction.member.setNickname(usernameData.name).catch(console.error);
         } catch (err) {
             console.error(`Error fetching Roblox username for ${robloxId}:`, err);
         }
 
         await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
 
-        // ===== Auto check badges every 10s =====
-        setInterval(() => checkUserBadges(interaction.member, robloxId), 10000);
+        // ===== Auto check badges game mỗi 10s =====
+        setInterval(() => checkGameBadges(interaction.member, robloxId), 10000);
     }
 });
 
