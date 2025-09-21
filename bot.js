@@ -1,3 +1,4 @@
+// bot.js
 import { Client, GatewayIntentBits, Partials, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 import fetch from "node-fetch";
 import express from "express";
@@ -58,27 +59,42 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isModalSubmit() && interaction.customId === 'verifyModal') {
         const robloxId = interaction.fields.getTextInputValue('robloxId');
         let hasBadge = false;
+        let badgeRolesFound = [];
 
-        for (let badgeId of Object.keys(badgeRoles)) {
-            try {
-                const res = await fetch(`https://api.roblox.com/users/${robloxId}/badges/awarded?badgeId=${badgeId}`);
-                const data = await res.json();
-                if (data && data.length > 0) {
-                    hasBadge = true;
-                    const roleId = badgeRoles[badgeId];
-                    const role = interaction.guild.roles.cache.get(roleId);
-                    if (role) interaction.member.roles.add(role).catch(console.error);
+        try {
+            // ===== Check all badges of user using API v2 =====
+            const res = await fetch(`https://games.roblox.com/v1/users/${robloxId}/badges`);
+            const badgeData = await res.json();
+
+            if (badgeData && badgeData.data) {
+                const userBadgeIds = badgeData.data.map(b => b.id);
+
+                for (let badgeId of Object.keys(badgeRoles)) {
+                    if (userBadgeIds.includes(Number(badgeId))) {
+                        hasBadge = true;
+                        badgeRolesFound.push(badgeRoles[badgeId]);
+                    }
                 }
-            } catch (err) {
-                console.error(`Error checking badge ${badgeId} for user ${robloxId}:`, err);
             }
+        } catch (err) {
+            console.error(`Error checking badges for user ${robloxId}:`, err);
         }
 
-        // Remove Unverified
+        // ===== Remove Unverified =====
         const unverifiedRole = interaction.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
         if (unverifiedRole) interaction.member.roles.remove(unverifiedRole).catch(console.error);
 
-        // Update nickname
+        // ===== Add Members / Verified role =====
+        const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
+        if (verifiedRole) interaction.member.roles.add(verifiedRole).catch(console.error);
+
+        // ===== Add badge roles if any =====
+        for (let roleId of badgeRolesFound) {
+            const role = interaction.guild.roles.cache.get(roleId);
+            if (role) interaction.member.roles.add(role).catch(console.error);
+        }
+
+        // ===== Update nickname =====
         try {
             const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
             const usernameData = await usernameRes.json();
@@ -89,7 +105,7 @@ client.on('interactionCreate', async interaction => {
             console.error(`Error fetching Roblox username for ${robloxId}:`, err);
         }
 
-        await interaction.reply({ content: hasBadge ? 'Verify thành công!' : 'Không tìm thấy badge!', ephemeral: true });
+        await interaction.reply({ content: hasBadge || badgeRolesFound.length === 0 ? 'Verify thành công!' : 'Không tìm thấy badge!', ephemeral: true });
     }
 });
 
