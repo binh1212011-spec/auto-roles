@@ -4,7 +4,9 @@ const {
 } = require('discord.js');
 require('dotenv').config();
 const fetch = require('node-fetch');
+const fs = require('fs');
 const express = require('express');
+const cron = require('node-cron');
 const badgeRoles = require('./badgeRoles.json');
 
 const client = new Client({
@@ -15,7 +17,19 @@ const client = new Client({
 const { TOKEN, CLIENT_ID, GUILD_ID, PORT } = process.env;
 const UNVERIFIED_ROLE_ID = 'ID_ROLE_UNVERIFIED';
 const MEMBER_ROLE_ID = 'ID_ROLE_MEMBER';
+
 let verifiedUsers = {};
+
+// ==== Load verifiedUsers.json nếu có ====
+const VERIFIED_FILE = './verifiedUsers.json';
+if (fs.existsSync(VERIFIED_FILE)) {
+    verifiedUsers = JSON.parse(fs.readFileSync(VERIFIED_FILE, 'utf8'));
+}
+
+// ==== Save verifiedUsers.json định kỳ ====
+function saveVerifiedUsers() {
+    fs.writeFileSync(VERIFIED_FILE, JSON.stringify(verifiedUsers, null, 2));
+}
 
 // ==== Slash Command Setup ====
 const commands = [
@@ -37,6 +51,16 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 const app = express();
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT || 3000, () => console.log(`Server running on port ${PORT}`));
+
+// ==== Ping server keep-alive tự động mỗi 5 phút ====
+cron.schedule('*/5 * * * *', async () => {
+    try {
+        await fetch(`http://localhost:${PORT}`);
+        console.log('✅ Keep-alive ping');
+    } catch (e) {
+        console.error('Keep-alive error:', e);
+    }
+});
 
 // ==== Events ====
 client.on('guildMemberAdd', async member => {
@@ -63,6 +87,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'verifyModal') {
         const username = interaction.fields.getTextInputValue('robloxUsername').trim();
         verifiedUsers[interaction.user.id] = username;
+        saveVerifiedUsers();
 
         const guild = await client.guilds.fetch(GUILD_ID);
         const member = await guild.members.fetch(interaction.user.id);
