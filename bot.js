@@ -1,85 +1,115 @@
 import { Client, GatewayIntentBits } from "discord.js";
-import fetch from "node-fetch";
 import express from "express";
-import badgeRoles from "./badgeRoles.json" assert { type: "json" };
-import dotenv from "dotenv";
+import fetch from "node-fetch";
+import fs from "fs";
 
-dotenv.config();
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers] });
+const PORT = process.env.PORT || 3000;
 
-const TOKEN = process.env.TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
-const VERIFY_API = process.env.VERIFY_API;
-const UNVERIFIED_ROLE_ID = process.env.UNVERIFIED_ROLE_ID;
+// Load badge roles
+const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json"));
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+// Lưu code verify tạm thời
+let verifyCodes = {};
+
+// ==== KEEP ALIVE SERVER ====
+const app = express();
+app.use(express.json());
+
+// Tạo mã verify
+app.post("/generate-code", (req, res) => {
+  const { discordId } = req.body;
+  const code = Math.floor(100000 + Math.random() * 900000); // 6 chữ số
+  verifyCodes[discordId] = code;
+  res.json({ code });
 });
 
-// ================= Keep-Alive Server =================
-const app = express();
-app.get("/", (req, res) => res.send("Bot is alive!"));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Keep-alive server running on port ${PORT}`));
+// Check verify
+app.post("/check-code", async (req, res) => {
+  const { discordId, robloxUsername } = req.body;
+  const code = verifyCodes[discordId];
+  if (!code) return res.json({ success: false, reason: "No code generated" });
 
-// ================= Core Logic =================
-async function updateRolesAndNicknames() {
-  const guild = await client.guilds.fetch(GUILD_ID);
-  const members = await guild.members.fetch();
+  // Lấy description Roblox
+  const robloxProfile = await fetch(`https://users.roblox.com/v1/users/get-by-username?username=${robloxUsername}`);
+  const robloxData = await robloxProfile.json();
+  if (robloxData.errors) return res.json({ success: false, reason: "Roblox username not found" });
 
-  for (const member of members.values()) {
-    if (member.user.bot) continue;
+  const descRes = await fetch(`https://users.roblox.com/v1/users/${robloxData.id}/profile`);
+  const profileData = await descRes.json();
+  if (!profileData.description.includes(code.toString())) return res.json({ success: false });
 
-    let data;
-    try {
-      const res = await fetch(`${VERIFY_API}?discordId=${member.id}`);
-      data = await res.json();
-    } catch (err) {
-      console.error(`Error fetching verify for ${member.id}:`, err);
-      continue;
-    }
+  delete verifyCodes[discordId];
+  res.json({ success: true, robloxId: robloxData.id, robloxUsername });
+});
 
-    // ---------- Unverified Role ----------
-    if (!data || !data.robloxUsername) {
-      if (!member.roles.cache.has(UNVERIFIED_ROLE_ID)) {
-        member.roles.add(UNVERIFIED_ROLE_ID).catch(console.error);
-      }
-      continue; // chưa verify -> không làm gì thêm
-    } else {
-      if (member.roles.cache.has(UNVERIFIED_ROLE_ID)) {
-        member.roles.remove(UNVERIFIED_ROLE_ID).catch(console.error);
-      }
-    }
+// Start Express server
+app.listen(PORT, () => console.log(`Verify API running on port ${PORT}`));
 
-    const robloxUsername = data.robloxUsername;
-    const userBadges = data.badges || [];
+// ==== DISCORD BOT ====
+client.on("guildMemberAdd", async (member) => {
+  const unverifiedRole = member.guild.roles.cache.find(r => r.name === "Unverified");
+  if (unverifiedRole) await member.roles.add(unverifiedRole);
+});
 
-    // ---------- Badge Roles ----------
-    for (const badge in badgeRoles) {
-      const roleId = badgeRoles[badge];
-      if (userBadges.includes(badge)) {
-        if (!member.roles.cache.has(roleId)) member.roles.add(roleId).catch(console.error);
-      } else {
-        if (member.roles.cache.has(roleId)) member.roles.remove(roleId).catch(console.error);
-      }
-    }
+// Slash commands xử lý verify
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
 
-    // ---------- Set Nickname ----------
-    if (robloxUsername && member.nickname !== robloxUsername) {
-      member.setNickname(robloxUsername).catch(console.error);
-    }
+  if (interaction.commandName === "verify") {
+    const res = await fetch(`http://localhost:${PORT}/generate-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId: interaction.user.id })
+    });
+    const data = await res.json();
+    await interaction.reply(`Mã verify của bạn: **${data.code}**. Hãy thêm vào Roblox profile của bạn.`);
   }
+
+  if (interaction.commandName === "checkverify") {
+    const robloxUsername = interaction.options.getString("username");
+    const res = await fetch(`http://localhost:${PORT}/check-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discordId: interaction.user.id, robloxUsername })
+    });
+    const result = await res.json();
+
+    if (!result.success) return interaction.reply(`❌ Verify thất bại. ${result.reason || ""}`);
+
+    const member = interaction.guild.members.cache.get(interaction.user.id);
+    const verifiedRole = interaction.guild.roles.cache.find(r => r.name === "Verified");
+    if (verifiedRole) await member.roles.add(verifiedRole);
+
+    // đổi nickname
+    await member.setNickname(result.robloxUsername);
+
+    interaction.reply("✅ Bạn đã được verify!");
+  }
+});
+
+// Check badge roles mỗi 10 phút
+setInterval(async () => {
+  client.guilds.cache.forEach(async (guild) => {
+    const members = await guild.members.fetch();
+    members.forEach(async (member) => {
+      for (const badgeId in badgeRoles) {
+        const roleName = badgeRoles[badgeId];
+        const role = guild.roles.cache.find(r => r.name === roleName);
+        if (!role) continue;
+
+        // Giả lập kiểm tra badge Roblox
+        const hasBadge = await checkRobloxBadge(member, badgeId);
+        if (!hasBadge && member.roles.cache.has(role.id)) await member.roles.remove(role);
+      }
+    });
+  });
+}, 10 * 60 * 1000);
+
+// Giả lập check badge Roblox
+async function checkRobloxBadge(member, badgeId) {
+  // Trong thực tế: call Roblox API để check badges
+  return true; // tạm luôn trả true để thử
 }
 
-// ================= Schedule Auto Update =================
-client.once("ready", async () => {
-  console.log(`Logged in as ${client.user.tag}!`);
-
-  // Lần đầu update ngay khi bot bật
-  updateRolesAndNicknames();
-
-  // Sau đó mỗi 5 phút update một lần
-  setInterval(updateRolesAndNicknames, 5 * 60 * 1000);
-});
-
-client.login(TOKEN);
-
+client.login(process.env.TOKEN);
