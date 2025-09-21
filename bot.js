@@ -1,4 +1,3 @@
-// bot-debug.js
 import { Client, GatewayIntentBits, Partials, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 import fetch from "node-fetch";
 import express from "express";
@@ -24,28 +23,28 @@ client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 
 // ===== Keep-alive server =====
 const app = express();
-const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is alive!'));
-app.listen(PORT, () => console.log(`Keep-alive running on port ${PORT}`));
+app.listen(process.env.PORT || 3000, () => console.log('Keep-alive running'));
 
 // ===== Auto assign Unverified role =====
 client.on('guildMemberAdd', async (member) => {
-    const role = member.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
-    if (!role) return console.log("Unverified role not found");
-    console.log(`Adding Unverified role to ${member.user.tag}`);
-    setTimeout(() => {
-        member.roles.add(role)
-            .then(() => console.log(`Unverified role added to ${member.user.tag}`))
-            .catch(console.error);
-    }, 1);
+    try {
+        const role = member.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
+        if (!role) return console.log("Unverified role not found");
+        console.log(`Adding Unverified role to ${member.user.tag}`);
+        setTimeout(async () => {
+            await member.roles.add(role).catch(console.error);
+            console.log(`Unverified role added to ${member.user.tag}`);
+        }, 1);
+    } catch (err) {
+        console.error(err);
+    }
 });
 
 // ===== Function check badges =====
 async function checkGameBadges(member, robloxId) {
     try {
-        // Cập nhật member cache
-        await member.fetch();
-        
+        member = await member.guild.members.fetch(member.id); // fetch member để chắc chắn cache
         const res = await fetch(`https://games.roblox.com/v1/users/${robloxId}/badges?gameId=${GAME_ID}`);
         const data = await res.json();
         console.log(`Roblox badge data for ${member.user.tag}:`, data);
@@ -53,7 +52,6 @@ async function checkGameBadges(member, robloxId) {
         if (!data || !data.data) return;
 
         const userBadgeIds = data.data.map(b => b.id);
-        console.log("User badge IDs:", userBadgeIds);
 
         for (let badgeId of Object.keys(badgeRoles)) {
             const roleId = badgeRoles[badgeId];
@@ -82,67 +80,61 @@ async function checkGameBadges(member, robloxId) {
 
 // ===== Slash command /verify =====
 client.on('interactionCreate', async interaction => {
-    console.log('Interaction received:', interaction.type, interaction.user.tag);
+    try {
+        console.log('Interaction received:', interaction.type, interaction.user.tag);
 
-    if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
-        console.log(`Verify command triggered by ${interaction.user.tag}`);
-        const modal = new ModalBuilder()
-            .setCustomId('verifyModal')
-            .setTitle('Verify Roblox');
+        if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
+            const modal = new ModalBuilder()
+                .setCustomId('verifyModal')
+                .setTitle('Verify Roblox');
 
-        const robloxInput = new TextInputBuilder()
-            .setCustomId('robloxId')
-            .setLabel("Nhập Roblox ID")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("12345678")
-            .setRequired(true);
+            const robloxInput = new TextInputBuilder()
+                .setCustomId('robloxId')
+                .setLabel("Nhập Roblox ID")
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder("12345678")
+                .setRequired(true);
 
-        const row = new ActionRowBuilder().addComponents(robloxInput);
-        modal.addComponents(row);
-        await interaction.showModal(modal);
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'verifyModal') {
-        const robloxId = interaction.fields.getTextInputValue('robloxId');
-        console.log(`${interaction.user.tag} submitted Roblox ID: ${robloxId}`);
-
-        // Remove Unverified
-        const unverifiedRole = interaction.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
-        if (unverifiedRole) {
-            interaction.member.roles.remove(unverifiedRole)
-                .then(() => console.log(`Removed Unverified from ${interaction.user.tag}`))
-                .catch(console.error);
+            modal.addComponents(new ActionRowBuilder().addComponents(robloxInput));
+            await interaction.showModal(modal);
         }
 
-        // Add Members role
-        const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
-        if (verifiedRole) {
-            interaction.member.roles.add(verifiedRole)
-                .then(() => console.log(`Added Members role to ${interaction.user.tag}`))
-                .catch(console.error);
-        }
+        if (interaction.isModalSubmit() && interaction.customId === 'verifyModal') {
+            const robloxId = interaction.fields.getTextInputValue('robloxId');
+            console.log(`${interaction.user.tag} submitted Roblox ID: ${robloxId}`);
 
-        // Set nickname Roblox
-        try {
-            const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
-            const usernameData = await usernameRes.json();
-            console.log(`Fetched Roblox username:`, usernameData);
-            if (usernameData && usernameData.name) {
-                interaction.member.setNickname(usernameData.name)
-                    .then(() => console.log(`Nickname set to ${usernameData.name} for ${interaction.user.tag}`))
-                    .catch(console.error);
+            // Fetch member đầy đủ
+            let member = await interaction.guild.members.fetch(interaction.user.id);
+
+            // Remove Unverified
+            const unverifiedRole = interaction.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
+            if (unverifiedRole) await member.roles.remove(unverifiedRole).catch(console.error);
+
+            // Add Members role
+            const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
+            if (verifiedRole) await member.roles.add(verifiedRole).catch(console.error);
+
+            // Set nickname Roblox
+            try {
+                const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
+                const usernameData = await usernameRes.json();
+                if (usernameData && usernameData.name) {
+                    await member.setNickname(usernameData.name).catch(console.error);
+                }
+            } catch (err) {
+                console.error(err);
             }
-        } catch (err) {
-            console.error(`Error fetching Roblox username for ${robloxId}:`, err);
+
+            await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
+
+            // Check badges lần đầu sau 5s, sau đó mỗi 10s
+            setTimeout(() => {
+                checkGameBadges(member, robloxId);
+                setInterval(() => checkGameBadges(member, robloxId), 10000);
+            }, 5000);
         }
-
-        await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
-
-        // Check badges lần đầu sau 5s, sau đó mỗi 10s
-        setTimeout(() => {
-            checkGameBadges(interaction.member, robloxId);
-            setInterval(() => checkGameBadges(interaction.member, robloxId), 10000);
-        }, 5000);
+    } catch (err) {
+        console.error(err);
     }
 });
 
