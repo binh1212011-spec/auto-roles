@@ -11,7 +11,7 @@ dotenv.config();
 const badgeRoles = JSON.parse(fs.readFileSync("./badgeRoles.json", "utf8"));
 
 // ===== Game ID của bạn =====
-const GAME_ID = process.env.GAME_ID; // Ví dụ: "15532962292"
+const GAME_ID = process.env.GAME_ID; // Nhập Game ID thật của bạn trong .env
 
 // ===== Bot setup =====
 const client = new Client({
@@ -96,7 +96,7 @@ client.on('interactionCreate', async interaction => {
         const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
         if (verifiedRole) interaction.member.roles.add(verifiedRole).catch(console.error);
 
-        // ===== Update nickname =====
+        // ===== Update nickname Roblox =====
         try {
             const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
             const usernameData = await usernameRes.json();
@@ -107,8 +107,11 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
 
-        // ===== Auto check badges game mỗi 10s =====
-        setInterval(() => checkGameBadges(interaction.member, robloxId), 10000);
+        // ===== Auto check badges game mỗi 10s, lần đầu sau 5s =====
+        setTimeout(() => {
+            checkGameBadges(interaction.member, robloxId); // check lần đầu
+            setInterval(() => checkGameBadges(interaction.member, robloxId), 10000);
+        }, 5000);
     }
 });
 
