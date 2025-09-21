@@ -4,6 +4,7 @@ const {
 } = require('discord.js');
 require('dotenv').config();
 const fetch = require('node-fetch');
+const express = require('express');
 const badgeRoles = require('./badgeRoles.json');
 
 const client = new Client({
@@ -11,10 +12,9 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-const { TOKEN, CLIENT_ID, GUILD_ID } = process.env;
+const { TOKEN, CLIENT_ID, GUILD_ID, PORT } = process.env;
 const UNVERIFIED_ROLE_ID = 'ID_ROLE_UNVERIFIED';
 const MEMBER_ROLE_ID = 'ID_ROLE_MEMBER';
-
 let verifiedUsers = {};
 
 // ==== Slash Command Setup ====
@@ -33,9 +33,13 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
     } catch (err) { console.error(err); }
 })();
 
+// ==== Express keep-alive server ====
+const app = express();
+app.get('/', (req, res) => res.send('Bot is alive!'));
+app.listen(PORT || 3000, () => console.log(`Server running on port ${PORT}`));
+
 // ==== Events ====
 client.on('guildMemberAdd', async member => {
-    // Thêm role Unverified
     const role = member.guild.roles.cache.get(UNVERIFIED_ROLE_ID);
     if (role) member.roles.add(role).catch(console.error);
 });
