@@ -22,11 +22,13 @@ const client = new Client({
 
 client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
 
+// ===== Keep-alive server =====
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT, () => console.log(`Keep-alive running on port ${PORT}`));
 
+// ===== Auto assign Unverified role =====
 client.on('guildMemberAdd', async (member) => {
     const role = member.guild.roles.cache.get(process.env.UNVERIFIED_ROLE_ID);
     if (!role) return console.log("Unverified role not found");
@@ -38,42 +40,50 @@ client.on('guildMemberAdd', async (member) => {
     }, 1);
 });
 
+// ===== Function check badges =====
 async function checkGameBadges(member, robloxId) {
     try {
+        // Cập nhật member cache
+        await member.fetch();
+        
         const res = await fetch(`https://games.roblox.com/v1/users/${robloxId}/badges?gameId=${GAME_ID}`);
         const data = await res.json();
-        console.log(`Badge API for ${member.user.tag}:`, data);
+        console.log(`Roblox badge data for ${member.user.tag}:`, data);
 
         if (!data || !data.data) return;
 
         const userBadgeIds = data.data.map(b => b.id);
+        console.log("User badge IDs:", userBadgeIds);
 
         for (let badgeId of Object.keys(badgeRoles)) {
             const roleId = badgeRoles[badgeId];
             const role = member.guild.roles.cache.get(roleId);
             if (!role) {
-                console.log(`Role ID ${roleId} not found in guild`);
+                console.log(`Role ID ${roleId} not found`);
                 continue;
             }
 
             if (userBadgeIds.includes(Number(badgeId))) {
                 if (!member.roles.cache.has(role.id)) {
                     console.log(`Adding badge role ${role.name} to ${member.user.tag}`);
-                    member.roles.add(role).catch(console.error);
+                    await member.roles.add(role, "User has badge").catch(console.error);
                 }
             } else {
                 if (member.roles.cache.has(role.id)) {
                     console.log(`Removing badge role ${role.name} from ${member.user.tag}`);
-                    member.roles.remove(role).catch(console.error);
+                    await member.roles.remove(role, "User no longer has badge").catch(console.error);
                 }
             }
         }
     } catch (err) {
-        console.error(`Error checking badges for user ${robloxId}:`, err);
+        console.error(`Error checking badges for ${member.user.tag}:`, err);
     }
 }
 
+// ===== Slash command /verify =====
 client.on('interactionCreate', async interaction => {
+    console.log('Interaction received:', interaction.type, interaction.user.tag);
+
     if (interaction.isChatInputCommand() && interaction.commandName === 'verify') {
         console.log(`Verify command triggered by ${interaction.user.tag}`);
         const modal = new ModalBuilder()
@@ -112,7 +122,7 @@ client.on('interactionCreate', async interaction => {
                 .catch(console.error);
         }
 
-        // Set nickname
+        // Set nickname Roblox
         try {
             const usernameRes = await fetch(`https://users.roblox.com/v1/users/${robloxId}`);
             const usernameData = await usernameRes.json();
@@ -128,7 +138,7 @@ client.on('interactionCreate', async interaction => {
 
         await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
 
-        // Check badges lần đầu sau 5s, sau đó 10s
+        // Check badges lần đầu sau 5s, sau đó mỗi 10s
         setTimeout(() => {
             checkGameBadges(interaction.member, robloxId);
             setInterval(() => checkGameBadges(interaction.member, robloxId), 10000);
@@ -136,4 +146,5 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
+// ===== Login =====
 client.login(process.env.TOKEN);
