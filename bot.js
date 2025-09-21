@@ -36,6 +36,36 @@ client.on('guildMemberAdd', async (member) => {
     setTimeout(() => member.roles.add(role).catch(console.error), 1);
 });
 
+// ===== Function check badges =====
+async function checkUserBadges(member, robloxId) {
+    try {
+        const res = await fetch(`https://badges.roblox.com/v1/users/${robloxId}/badges?limit=100`);
+        const data = await res.json();
+
+        if (!data || !data.data) return;
+
+        const userBadgeIds = data.data.map(b => b.id);
+
+        for (let badgeId of Object.keys(badgeRoles)) {
+            const roleId = badgeRoles[badgeId];
+            const role = member.guild.roles.cache.get(roleId);
+            if (!role) continue;
+
+            if (userBadgeIds.includes(Number(badgeId))) {
+                if (!member.roles.cache.has(role.id)) {
+                    member.roles.add(role).catch(console.error);
+                }
+            } else {
+                if (member.roles.cache.has(role.id)) {
+                    member.roles.remove(role).catch(console.error);
+                }
+            }
+        }
+    } catch (err) {
+        console.error(`Error checking badges for user ${robloxId}:`, err);
+    }
+}
+
 // ===== Slash command /verify =====
 client.on('interactionCreate', async interaction => {
 
@@ -61,13 +91,13 @@ client.on('interactionCreate', async interaction => {
         let hasBadge = false;
         let badgeRolesFound = [];
 
+        // ===== Initial badge check =====
         try {
-            // ===== Check all badges of user using API v2 =====
-            const res = await fetch(`https://games.roblox.com/v1/users/${robloxId}/badges`);
-            const badgeData = await res.json();
+            const res = await fetch(`https://badges.roblox.com/v1/users/${robloxId}/badges?limit=100`);
+            const data = await res.json();
 
-            if (badgeData && badgeData.data) {
-                const userBadgeIds = badgeData.data.map(b => b.id);
+            if (data && data.data) {
+                const userBadgeIds = data.data.map(b => b.id);
 
                 for (let badgeId of Object.keys(badgeRoles)) {
                     if (userBadgeIds.includes(Number(badgeId))) {
@@ -88,7 +118,7 @@ client.on('interactionCreate', async interaction => {
         const verifiedRole = interaction.guild.roles.cache.get(process.env.MEMBERS_ROLE_ID);
         if (verifiedRole) interaction.member.roles.add(verifiedRole).catch(console.error);
 
-        // ===== Add badge roles if any =====
+        // ===== Add initial badge roles =====
         for (let roleId of badgeRolesFound) {
             const role = interaction.guild.roles.cache.get(roleId);
             if (role) interaction.member.roles.add(role).catch(console.error);
@@ -105,7 +135,10 @@ client.on('interactionCreate', async interaction => {
             console.error(`Error fetching Roblox username for ${robloxId}:`, err);
         }
 
-        await interaction.reply({ content: hasBadge || badgeRolesFound.length === 0 ? 'Verify thành công!' : 'Không tìm thấy badge!', ephemeral: true });
+        await interaction.reply({ content: 'Verify thành công! Badge sẽ được kiểm tra mỗi 10 giây.', ephemeral: true });
+
+        // ===== Auto check badges every 10s =====
+        setInterval(() => checkUserBadges(interaction.member, robloxId), 10000);
     }
 });
 
