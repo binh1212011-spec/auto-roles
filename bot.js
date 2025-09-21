@@ -1,13 +1,14 @@
-const { 
+import { 
     Client, GatewayIntentBits, Partials, REST, Routes, SlashCommandBuilder,
     ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, InteractionType
-} = require('discord.js');
-require('dotenv').config();
-const fetch = require('node-fetch');
-const fs = require('fs');
-const express = require('express');
-const cron = require('node-cron');
-const badgeRoles = require('./badgeRoles.json');
+} from 'discord.js';
+import dotenv from 'dotenv';
+dotenv.config();
+import fetch from 'node-fetch';
+import fs from 'fs';
+import express from 'express';
+import cron from 'node-cron';
+import badgeRoles from './badgeRoles.json' assert { type: "json" };
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
