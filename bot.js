@@ -1,4 +1,3 @@
-// bot.js
 import { Client, GatewayIntentBits, Partials, ActionRowBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from "discord.js";
 import fetch from "node-fetch";
 import express from "express";
