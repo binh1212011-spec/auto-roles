@@ -19,14 +19,14 @@ const UNVERIFIED_ROLE_ID = 'ID_ROLE_UNVERIFIED';
 const MEMBER_ROLE_ID = 'ID_ROLE_MEMBER';
 
 let verifiedUsers = {};
-
-// ==== Load verifiedUsers.json nếu có ====
 const VERIFIED_FILE = './verifiedUsers.json';
+
+// Load dữ liệu nếu có
 if (fs.existsSync(VERIFIED_FILE)) {
     verifiedUsers = JSON.parse(fs.readFileSync(VERIFIED_FILE, 'utf8'));
 }
 
-// ==== Save verifiedUsers.json định kỳ ====
+// Lưu định kỳ
 function saveVerifiedUsers() {
     fs.writeFileSync(VERIFIED_FILE, JSON.stringify(verifiedUsers, null, 2));
 }
@@ -52,14 +52,10 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is alive!'));
 app.listen(PORT || 3000, () => console.log(`Server running on port ${PORT}`));
 
-// ==== Ping server keep-alive tự động mỗi 5 phút ====
+// Ping keep-alive tự động mỗi 5 phút
 cron.schedule('*/5 * * * *', async () => {
-    try {
-        await fetch(`http://localhost:${PORT}`);
-        console.log('✅ Keep-alive ping');
-    } catch (e) {
-        console.error('Keep-alive error:', e);
-    }
+    try { await fetch(`http://localhost:${PORT}`); console.log('✅ Keep-alive ping'); }
+    catch (e) { console.error('Keep-alive error:', e); }
 });
 
 // ==== Events ====
@@ -104,7 +100,7 @@ client.on('interactionCreate', async interaction => {
     }
 });
 
-// ==== Check badges mỗi 10s ====
+// Check badges mỗi 10 giây
 setInterval(async () => {
     for (const [discordId, username] of Object.entries(verifiedUsers)) {
         try {
