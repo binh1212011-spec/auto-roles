@@ -1,110 +1,55 @@
-import express from "express";
-import { Client, GatewayIntentBits, Partials, REST, Routes } from "discord.js";
-import cron from "node-cron";
-import badgeRoles from "./badgeRoles.json" assert { type: "json" };
-import fetch from "node-fetch";
-import dotenv from "dotenv";
-dotenv.config();
+// bot.cjs
+const { Client, GatewayIntentBits } = require("discord.js");
+const express = require("express");
+const cron = require("node-cron");
+const fetch = require("node-fetch");
+const badgeRoles = require("./badgeRoles.json");
+require("dotenv").config();
 
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-  partials: [Partials.Channel]
-});
+// ==== CONFIG ====
+const TOKEN = process.env.TOKEN;           // Token bot
+const GUILD_ID = process.env.GUILD_ID;     // ID server Discord
+const KEEP_ALIVE_PORT = process.env.PORT || 3000;
 
-const GUILD_ID = "YOUR_GUILD_ID"; // server ID
-const UNVERIFIED_ROLE = "Unverified";
-const MEMBER_ROLE = "Members";
-
-// ==== Keep-alive server ====
+// ==== KEEP-ALIVE SERVER ====
 const app = express();
 app.get("/", (req, res) => res.send("Bot is alive!"));
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Keep-alive server running on port ${PORT}`));
+app.listen(KEEP_ALIVE_PORT, () => console.log(`Keep-alive running on port ${KEEP_ALIVE_PORT}`));
 
-// ==== Verify command (slash command) ====
+// ==== DISCORD CLIENT ====
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+});
+
 client.once("ready", async () => {
   console.log(`Logged in as ${client.user.tag}!`);
 
-  const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
-  await rest.put(
-    Routes.applicationGuildCommands(client.user.id, GUILD_ID),
-    {
-      body: [
-        {
-          name: "verify",
-          description: "Verify your Roblox account",
-          options: [
-            {
-              name: "username",
-              description: "Your Roblox username",
-              type: 3, // STRING
-              required: true
-            }
-          ]
-        }
-      ]
-    }
-  );
-});
+  // Auto-check badges every 5 minutes
+  cron.schedule("*/5 * * * *", async () => {
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) return;
 
-// ==== Interaction handler ====
-client.on("interactionCreate", async interaction => {
-  if (!interaction.isCommand()) return;
+    const members = await guild.members.fetch();
 
-  if (interaction.commandName === "verify") {
-    const username = interaction.options.getString("username");
-    const guild = await client.guilds.fetch(GUILD_ID);
-    const member = await guild.members.fetch(interaction.user.id);
+    members.forEach(member => {
+      if (member.user.bot) return;
 
-    // đổi nickname
-    await member.setNickname(username).catch(console.error);
+      for (const badge in badgeRoles) {
+        const roleId = badgeRoles[badge];
 
-    // add Members, remove Unverified
-    const memberRole = guild.roles.cache.find(r => r.name === MEMBER_ROLE);
-    const unverifiedRole = guild.roles.cache.find(r => r.name === UNVERIFIED_ROLE);
-    if (memberRole) await member.roles.add(memberRole).catch(console.error);
-    if (unverifiedRole) await member.roles.remove(unverifiedRole).catch(console.error);
+        // Giả sử bạn có API verify trả badge list, thay bằng fetch thật
+        // Ví dụ: const userBadges = await getBadges(member.id);
+        const userBadges = []; // tạm thời để test
 
-    await interaction.reply(`✅ Verified as ${username}`);
-  }
-});
-
-// ==== Badge check cron job ====
-cron.schedule("*/10 * * * * *", async () => {
-  const guild = await client.guilds.fetch(GUILD_ID);
-  const members = await guild.members.fetch();
-
-  members.forEach(async member => {
-    if (!member.user.bot) {
-      const username = member.displayName;
-      const res = await fetch(`https://api.roblox.com/users/get-by-username?username=${username}`);
-      const data = await res.json();
-      if (!data.Id) return;
-
-      const userId = data.Id;
-      const badgeRes = await fetch(`https://inventory.roblox.com/v1/users/${userId}/badges`);
-      const badgeData = await badgeRes.json();
-      const userBadges = badgeData.data.map(b => b.id);
-
-      for (const badgeId in badgeRoles) {
-        const roleName = badgeRoles[badgeId];
-        const role = guild.roles.cache.find(r => r.name === roleName);
-        if (!role) continue;
-
-        if (userBadges.includes(parseInt(badgeId))) {
-          if (!member.roles.cache.has(role.id)) {
-            await member.roles.add(role).catch(console.error);
-            console.log(`Added role ${roleName} to ${username}`);
-          }
+        if (userBadges.includes(badge)) {
+          if (!member.roles.cache.has(roleId)) member.roles.add(roleId).catch(console.error);
         } else {
-          if (member.roles.cache.has(role.id)) {
-            await member.roles.remove(role).catch(console.error);
-            console.log(`Removed role ${roleName} from ${username}`);
-          }
+          if (member.roles.cache.has(roleId)) member.roles.remove(roleId).catch(console.error);
         }
       }
-    }
+    });
   });
 });
 
-client.login(process.env.TOKEN);
+client.login(TOKEN);
+
