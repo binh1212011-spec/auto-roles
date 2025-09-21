@@ -8,7 +8,9 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import express from 'express';
 import cron from 'node-cron';
-import badgeRoles from './badgeRoles.json' assert { type: "json" };
+
+// Load badgeRoles.json bằng fs
+const badgeRoles = JSON.parse(fs.readFileSync('./badgeRoles.json', 'utf8'));
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
